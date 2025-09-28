@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ดัชนีศักยภาพพื้นที่เขตเมืองในกรุงเทพฯ (UDPI) - RankTable Version</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #111827; }
+        #loader { border: 5px solid #f3f3f3; border-top: 5px solid #4f46e5; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .map-path {
+            stroke: #1F2937; stroke-width: 3px;
+            transition: fill 0.3s ease-in-out, transform 0.2s, filter 0.2s;
+            cursor: pointer;
+        }
+        .map-path:hover {
+            stroke: #f9fafb; stroke-width: 4px;
+            transform: translateY(-3px);
+            filter: drop-shadow(0 5px 8px rgba(0,0,0,0.3));
+        }
+        .map-label { font-size: 14px; fill: rgba(255, 255, 255, 0.9); pointer-events: none; text-anchor: middle; font-weight: 500; }
+        .tooltip {
+            position: absolute; text-align: left; padding: 8px 12px;
+            font-size: 0.875rem; background: rgba(42, 51, 66, 0.95);
+            border: 1px solid #4b5563; border-radius: 8px;
+            pointer-events: none; opacity: 0; transition: opacity 0.2s;
+            color: white; z-index: 10;
+        }
+        .control-btn { transition: background-color 0.2s, color 0.2s; }
+        .control-btn.active { background-color: #4f46e5; color: white; }
+        .legend-gradient { background: linear-gradient(to right, #d73027, #fee08b, #1a9850); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 antialiased">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">ดัชนีศักยภาพพื้นที่เขตเมืองในกรุงเทพฯ (UDPI)</h1>
+            <p class="text-gray-400 mt-2">สำรวจศักยภาพของ 50 เขตในกรุงเทพฯ (ข้อมูลจาก RankTable.csv)</p>
+        </header>
+
+        <main class="bg-gray-800 rounded-xl shadow-2xl p-4 md:p-6">
+            <div id="controls" class="flex flex-wrap justify-center gap-2 md:gap-3 mb-6"></div>
+            <div class="relative w-full" style="padding-bottom: 75%;">
+                 <div id="map-container" class="absolute top-0 left-0 w-full h-full flex justify-center items-center">
+                    <div id="loader"></div>
+                 </div>
+            </div>
+            <div id="tooltip" class="tooltip"></div>
+            <div id="legend" class="flex justify-center items-center mt-4" style="display: none;">
+                <span class="text-sm mr-3">ศักยภาพต่ำ</span>
+                <div class="w-48 h-4 rounded-md legend-gradient"></div>
+                <span class="text-sm ml-3">ศักยภาพสูง</span>
+            </div>
+        </main>
+    </div>
+
+<script type="module">
+    // --- SCHEMATIC MAP DATA (SCALED UP) ---
+    const schematicMapData = [
+        { name: "พระนคร", path: "M738,522 L738,486 L792,486 L792,522 Z", labelPos: [765, 504] }, { name: "ป้อมปราบศัตรูพ่าย", path: "M792,522 L792,486 L837,486 L837,522 Z", labelPos: [814.5, 504] }, { name: "สัมพันธวงศ์", path: "M792,576 L792,522 L837,522 L837,576 Z", labelPos: [814.5, 549] }, { name: "คลองสาน", path: "M738,576 L738,522 L792,522 L792,576 Z", labelPos: [765, 549] }, { name: "ธนบุรี", path: "M684,630 L684,576 L792,576 L792,630 Z", labelPos: [738, 603] }, { name: "บางกอกใหญ่", path: "M684,576 L684,522 L738,522 L738,576 Z", labelPos: [711, 549] }, { name: "บางกอกน้อย", path: "M630,522 L630,486 L738,486 L738,522 Z", labelPos: [684, 504] }, { name: "ดุสิต", path: "M684,486 L684,432 L774,432 L774,486 L738,486 Z", labelPos: [729, 459] }, { name: "พญาไท", path: "M774,486 L774,432 L837,432 L837,486 Z", labelPos: [805.5, 459] }, { name: "ราชเทวี", path: "M837,486 L837,432 L900,432 L900,486 Z", labelPos: [868.5, 459] }, { name: "ดินแดง", path: "M837,432 L837,387 L900,387 L900,432 Z", labelPos: [868.5, 409.5] }, { name: "จตุจักร", path: "M774,432 L774,387 L837,387 L837,432 Z", labelPos: [805.5, 409.5] }, { name: "ปทุมวัน", path: "M837,522 L837,486 L900,486 L900,522 Z", labelPos: [868.5, 504] }, { name: "บางรัก", path: "M837,576 L837,522 L900,522 L900,576 Z", labelPos: [868.5, 549] }, { name: "สาทร", path: "M792,630 L792,576 L900,576 L900,630 Z", labelPos: [846, 603] }, { name: "บางคอแหลม", path: "M792,684 L792,630 L900,630 L900,684 Z", labelPos: [846, 657] }, { name: "ยานนาวา", path: "M900,684 L900,522 L954,522 L954,684 Z", labelPos: [927, 603] }, { name: "คลองเตย", path: "M954,630 L954,522 L1008,522 L1008,630 Z", labelPos: [981, 576] }, { name: "วัฒนา", path: "M900,522 L900,432 L1008,432 L1008,522 Z", labelPos: [954, 477] }, { name: "ห้วยขวาง", path: "M900,432 L900,387 L1008,387 L1008,432 Z", labelPos: [954, 409.5] }, { name: "บางซื่อ", path: "M684,432 L684,387 L774,387 L774,432 Z", labelPos: [729, 409.5] }, { name: "หลักสี่", path: "M774,387 L774,342 L900,342 L900,387 Z", labelPos: [837, 364.5] }, { name: "บางเขน", path: "M900,387 L900,342 L1008,342 L1008,387 Z", labelPos: [954, 364.5] }, { name: "ดอนเมือง", path: "M774,342 L774,288 L900,288 L900,342 Z", labelPos: [837, 315] }, { name: "สายไหม", path: "M900,342 L900,288 L1008,288 L1008,342 Z", labelPos: [954, 315] }, { name: "บางพลัด", path: "M630,486 L630,432 L684,432 L684,486 Z", labelPos: [657, 459] }, { name: "ตลิ่งชัน", path: "M576,576 L576,486 L630,486 L630,522 L684,522 L684,576 Z", labelPos: [630, 549] }, { name: "ภาษีเจริญ", path: "M576,684 L576,576 L684,576 L684,684 Z", labelPos: [630, 630] }, { name: "จอมทอง", path: "M684,684 L684,630 L792,630 L792,684 Z", labelPos: [738, 657] }, { name: "ราษฎร์บูรณะ", path: "M792,738 L792,684 L900,684 L900,738 Z", labelPos: [846, 711] }, { name: "ทุ่งครุ", path: "M792,792 L792,738 L900,738 L900,792 Z", labelPos: [846, 765] }, { name: "บางขุนเทียน", path: "M576,792 L576,684 L792,684 L792,792 Z", labelPos: [684, 738] }, { name: "บางบอน", path: "M468,792 L468,684 L576,684 L576,792 Z", labelPos: [522, 738] }, { name: "บางแค", path: "M468,684 L468,576 L576,576 L576,684 Z", labelPos: [522, 630] }, { name: "หนองแขม", path: "M360,738 L360,576 L468,576 L468,738 Z", labelPos: [414, 657] }, { name: "ทวีวัฒนา", path: "M360,576 L360,486 L576,486 L576,576 Z", labelPos: [468, 531] }, { name: "ลาดพร้าว", path: "M1008,387 L1008,342 L1116,342 L1116,387 Z", labelPos: [1062, 364.5] }, { name: "วังทองหลาง", path: "M1008,432 L1008,387 L1116,387 L1116,432 Z", labelPos: [1062, 409.5] }, { name: "บางกะปิ", path: "M1008,486 L1008,432 L1116,432 L1116,486 Z", labelPos: [1062, 459] }, { name: "สวนหลวง", path: "M1008,630 L1008,486 L1116,486 L1116,630 Z", labelPos: [1062, 558] }, { name: "พระโขนง", path: "M954,684 L954,630 L1116,630 L1116,684 Z", labelPos: [1035, 657] }, { name: "บางนา", path: "M954,792 L954,684 L1116,684 L1116,792 Z", labelPos: [1035, 738] }, { name: "ประเวศ", path: "M1116,684 L1116,486 L1224,486 L1224,684 Z", labelPos: [1170, 585] }, { name: "บึงกุ่ม", path: "M1116,486 L1116,432 L1224,432 L1224,486 Z", labelPos: [1170, 459] }, { name: "สะพานสูง", path: "M1224,486 L1224,432 L1332,432 L1332,486 Z", labelPos: [1278, 459] }, { name: "คันนายาว", path: "M1116,432 L1116,342 L1224,342 L1224,432 Z", labelPos: [1170, 387] }, { name: "คลองสามวา", path: "M1224,432 L1224,288 L1332,288 L1332,432 Z", labelPos: [1278, 360] }, { name: "มีนบุรี", path: "M1332,486 L1332,288 L1440,288 L1440,486 Z", labelPos: [1386, 387] }, { name: "ลาดกระบัง", path: "M1224,684 L1224,486 L1440,486 L1440,684 Z", labelPos: [1332, 585] }, { name: "หนองจอก", path: "M1440,684 L1440,288 L1620,288 L1620,684 Z", labelPos: [1530, 486] }
+    ];
+    
+    // --- APP LOGIC ---
+    const metricLabels = { udpi: "ภาพรวม (UDPI)", safety: "ด้านความปลอดภัย", health: "ด้านสาธารณสุข", education: "ด้านการศึกษา", environment: "คุณภาพสิ่งแวดล้อม", infrastructure: "ความพร้อมของโครงสร้างพื้นฐาน" };
+    
+    async function main() {
+        try {
+            // 1. Load data from the new RankTable.csv file
+            const rankData = await d3.csv("RankTable.csv", d3.autoType);
+            
+            // 2. Create a Map of scores for easy lookup
+            const scoreData = new Map();
+            rankData.forEach(d => {
+                const scores = {
+                    safety: d.ความมั่นคงและความปลอดภัย / 100, // Convert 0-100 to 0-1 for the color scale
+                    health: d.ศักยภาพด้านสาธารณสุข / 100,
+                    education: d.ศักยภาพด้านการศึกษา / 100,
+                    environment: d.คุณภาพสิ่งแวดล้อม / 100,
+                    infrastructure: d.ความพร้อมของโครงสร้างพื้นฐาน / 100
+                };
+                // Calculate the overall UDPI score
+                scores.udpi = (scores.safety + scores.health + scores.education + scores.environment + scores.infrastructure) / 5;
+                
+                scoreData.set(d.ชื่อเขต.replace('เขต', ''), scores);
+            });
+
+            // 3. Merge scores into the schematic map data
+            schematicMapData.forEach(d => Object.assign(d, scoreData.get(d.name)));
+            
+            // 4. Render the map
+            render(schematicMapData);
+
+        } catch (error) {
+            console.error("Error loading or processing data:", error);
+            d3.select("#map-container").html(`<div class="text-red-400 text-center p-4">...</div>`);
+        }
+    }
+    
+    function render(data) {
+        d3.select("#loader").remove();
+        let currentMetric = 'udpi';
+
+        const controls = d3.select("#controls");
+        Object.entries(metricLabels).forEach(([key, label]) => {
+             controls.append("button")
+                .attr("data-metric", key)
+                .attr("class", "control-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-indigo-500 font-semibold")
+                .classed("active", key === 'udpi')
+                .text(label);
+        });
+
+        const svg = d3.select("#map-container").append("svg").attr("viewBox", "0 0 2000 1500");
+        const tooltip = d3.select("#tooltip");
+        const colorScale = d3.scaleSequential(d3.interpolateRdYlGn);
+
+        // --- Center the map ---
+        const mapBounds = { xMin: 360, xMax: 1620, yMin: 288, yMax: 792 };
+        const mapWidth = mapBounds.xMax - mapBounds.xMin;
+        const mapHeight = mapBounds.yMax - mapBounds.yMin;
+        const viewBoxWidth = 2000;
+        const viewBoxHeight = 1500;
+        const translateX = (viewBoxWidth - mapWidth) / 2 - mapBounds.xMin;
+        const translateY = (viewBoxHeight - mapHeight) / 2 - mapBounds.yMin;
+        
+        const masterGroup = svg.append("g").attr("transform", `translate(${translateX}, ${translateY})`);
+        
+        const pathGroup = masterGroup.append("g").attr("class", "paths");
+        const labelGroup = masterGroup.append("g").attr("class", "labels");
+        
+        const mapPaths = pathGroup.selectAll("path")
+            .data(data)
+            .join("path")
+            .attr("d", d => d.path)
+            .attr("class", "map-path");
+
+        labelGroup.selectAll("text")
+            .data(data)
+            .join("text")
+            .attr("class", "map-label")
+            .attr("x", d => d.labelPos[0])
+            .attr("y", d => d.labelPos[1])
+            .text(d => d.name.replace('เขต',''));
+            
+        function updateMap(metric) {
+            currentMetric = metric;
+            const metricValues = data.map(d => d[metric]).filter(v => v !== undefined);
+            colorScale.domain(d3.extent(metricValues));
+            mapPaths.transition().duration(300).attr("fill", d => {
+                if(d[metric] === undefined) console.warn(`No data for district: ${d.name}`);
+                return d[metric] !== undefined ? colorScale(d[metric]) : "#4b5563";
+            });
+            d3.selectAll('.control-btn').classed('active', false);
+            d3.select(`.control-btn[data-metric="${metric}"]`).classed('active', true);
+        }
+
+        mapPaths.on("mouseover", function(event, d) {
+            d3.select(this).raise();
+            tooltip.style("opacity", 1)
+                .html(`<div class="font-bold text-lg">เขต${d.name}</div>
+                       <div>${metricLabels[currentMetric]}: <span class="font-semibold">${d[currentMetric] !== undefined ? (d[currentMetric] * 100).toFixed(2) : 'N/A'}</span></div>`);
+        })
+        .on("mousemove", event => tooltip.style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 15) + "px"))
+        .on("mouseout", () => tooltip.style("opacity", 0));
+
+        d3.select('#controls').selectAll('button').on('click', function() { updateMap(d3.select(this).attr('data-metric')); });
+        
+        d3.select("#legend").style("display", "flex");
+        updateMap('udpi');
+    }
+
+    main();
+</script>
+
+</body>
+</html>
