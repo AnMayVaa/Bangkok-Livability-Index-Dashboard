@@ -65,33 +65,33 @@
     ];
     
     // --- APP LOGIC ---
-    const metricLabels = { udpi: "ภาพรวม (UDPI)", safety: "ด้านความปลอดภัย", health: "ด้านสาธารณสุข", education: "ด้านการศึกษา", environment: "คุณภาพสิ่งแวดล้อม", infrastructure: "ความพร้อมของโครงสร้างพื้นฐาน" };
+    const metricLabels = {
+        rank: "คะแนนรวม (Rank)",
+        safety: "ด้านความปลอดภัย",
+        health: "ด้านสาธารณสุข",
+        education: "ด้านการศึกษา",
+        environment: "คุณภาพสิ่งแวดล้อม",
+        infrastructure: "ความพร้อมของโครงสร้างพื้นฐาน"
+    };
     
     async function main() {
         try {
-            // 1. Load data from the new RankTable.csv file
             const rankData = await d3.csv("RankTable.csv", d3.autoType);
             
-            // 2. Create a Map of scores for easy lookup
             const scoreData = new Map();
             rankData.forEach(d => {
                 const scores = {
-                    safety: d.ความมั่นคงและความปลอดภัย / 100, // Convert 0-100 to 0-1 for the color scale
-                    health: d.ศักยภาพด้านสาธารณสุข / 100,
-                    education: d.ศักยภาพด้านการศึกษา / 100,
-                    environment: d.คุณภาพสิ่งแวดล้อม / 100,
-                    infrastructure: d.ความพร้อมของโครงสร้างพื้นฐาน / 100
+                    safety: d.ความมั่นคงและความปลอดภัย,
+                    health: d.ศักยภาพด้านสาธารณสุข,
+                    education: d.ศักยภาพด้านการศึกษา,
+                    environment: d.คุณภาพสิ่งแวดล้อม,
+                    infrastructure: d.ความพร้อมของโครงสร้างพื้นฐาน,
+                    rank: d.Rank
                 };
-                // Calculate the overall UDPI score
-                scores.udpi = (scores.safety + scores.health + scores.education + scores.environment + scores.infrastructure) / 5;
-                
                 scoreData.set(d.ชื่อเขต.replace('เขต', ''), scores);
             });
 
-            // 3. Merge scores into the schematic map data
             schematicMapData.forEach(d => Object.assign(d, scoreData.get(d.name)));
-            
-            // 4. Render the map
             render(schematicMapData);
 
         } catch (error) {
@@ -102,32 +102,30 @@
     
     function render(data) {
         d3.select("#loader").remove();
-        let currentMetric = 'udpi';
+        let currentMetric = 'rank'; // Default to the new 'rank' metric
 
         const controls = d3.select("#controls");
         Object.entries(metricLabels).forEach(([key, label]) => {
              controls.append("button")
                 .attr("data-metric", key)
                 .attr("class", "control-btn px-4 py-2 rounded-lg bg-gray-700 hover:bg-indigo-500 font-semibold")
-                .classed("active", key === 'udpi')
+                .classed("active", key === 'rank')
                 .text(label);
         });
 
-        const svg = d3.select("#map-container").append("svg").attr("viewBox", "0 0 2000 1500");
+        const svg = d3.select("#map-container").append("svg").attr("viewBox", "0 0 1800 1200");
         const tooltip = d3.select("#tooltip");
-        const colorScale = d3.scaleSequential(d3.interpolateRdYlGn);
+        const colorScale = d3.scaleSequential(d3.interpolateRdYlGn).domain([0, 100]); // Set domain to 0-100
 
-        // --- Center the map ---
         const mapBounds = { xMin: 360, xMax: 1620, yMin: 288, yMax: 792 };
         const mapWidth = mapBounds.xMax - mapBounds.xMin;
         const mapHeight = mapBounds.yMax - mapBounds.yMin;
-        const viewBoxWidth = 2000;
-        const viewBoxHeight = 1500;
+        const viewBoxWidth = 1800;
+        const viewBoxHeight = 1200;
         const translateX = (viewBoxWidth - mapWidth) / 2 - mapBounds.xMin;
         const translateY = (viewBoxHeight - mapHeight) / 2 - mapBounds.yMin;
         
         const masterGroup = svg.append("g").attr("transform", `translate(${translateX}, ${translateY})`);
-        
         const pathGroup = masterGroup.append("g").attr("class", "paths");
         const labelGroup = masterGroup.append("g").attr("class", "labels");
         
@@ -147,8 +145,6 @@
             
         function updateMap(metric) {
             currentMetric = metric;
-            const metricValues = data.map(d => d[metric]).filter(v => v !== undefined);
-            colorScale.domain(d3.extent(metricValues));
             mapPaths.transition().duration(300).attr("fill", d => {
                 if(d[metric] === undefined) console.warn(`No data for district: ${d.name}`);
                 return d[metric] !== undefined ? colorScale(d[metric]) : "#4b5563";
@@ -161,7 +157,7 @@
             d3.select(this).raise();
             tooltip.style("opacity", 1)
                 .html(`<div class="font-bold text-lg">เขต${d.name}</div>
-                       <div>${metricLabels[currentMetric]}: <span class="font-semibold">${d[currentMetric] !== undefined ? (d[currentMetric] * 100).toFixed(2) : 'N/A'}</span></div>`);
+                       <div>${metricLabels[currentMetric]}: <span class="font-semibold">${d[currentMetric] !== undefined ? d[currentMetric].toFixed(2) : 'N/A'}</span></div>`);
         })
         .on("mousemove", event => tooltip.style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 15) + "px"))
         .on("mouseout", () => tooltip.style("opacity", 0));
@@ -169,7 +165,7 @@
         d3.select('#controls').selectAll('button').on('click', function() { updateMap(d3.select(this).attr('data-metric')); });
         
         d3.select("#legend").style("display", "flex");
-        updateMap('udpi');
+        updateMap('rank'); // Initial render
     }
 
     main();
